@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const { connectToDatabase, closeDatabase } = require('./src/data/store');
 
 const app = express();
 const server = http.createServer(app);
@@ -42,8 +43,26 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 CampusBid server running on port ${PORT}`);
-  console.log(`📦 Mode: Demo (in-memory data store)`);
-  console.log(`🤖 AI: ${process.env.OPENROUTER_API_KEY ? 'OpenRouter configured' : 'No API key — fallback mode'}`);
+
+async function start() {
+  await connectToDatabase();
+  server.listen(PORT, () => {
+    console.log(`🚀 CampusBid server running on port ${PORT}`);
+    console.log(`🤖 AI: ${process.env.OPENROUTER_API_KEY ? 'OpenRouter configured' : 'No API key — fallback mode'}`);
+  });
+}
+
+async function shutdown() {
+  server.close(async () => {
+    await closeDatabase();
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+start().catch(err => {
+  console.error('Failed to start CampusBid server:', err);
+  process.exitCode = 1;
 });

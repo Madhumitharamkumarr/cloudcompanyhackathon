@@ -1,5 +1,4 @@
-// Demo mode in-memory data store
-// In production, replace with MongoDB/Mongoose operations
+const { MongoClient } = require('mongodb');
 
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
@@ -229,96 +228,146 @@ const notifications = [
 // ─── Auto-bid settings ────────────────────────────────────────────────────────
 const autoBids = [];
 
-// ─── CRUD helpers ─────────────────────────────────────────────────────────────
+let client;
+let collections;
+
+function withoutMongoId(document) {
+  if (!document) return null;
+  const { _id, ...data } = document;
+  return { ...data, id: data.id || _id };
+}
+
+function withMongoId(document) {
+  return { ...document, _id: document.id };
+}
+
+async function seedCollection(collection, documents) {
+  if (documents.length && await collection.countDocuments() === 0) {
+    await collection.insertMany(documents.map(withMongoId));
+  }
+}
+
+async function connectToDatabase() {
+  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/campusbid';
+  client = new MongoClient(uri);
+  await client.connect();
+  const database = client.db(process.env.MONGODB_DB || 'campusbid');
+  await database.command({ ping: 1 });
+
+  collections = {
+    users: database.collection('users'),
+    auctions: database.collection('auctions'),
+    bids: database.collection('bids'),
+    questions: database.collection('questions'),
+    savedSearches: database.collection('savedSearches'),
+    notifications: database.collection('notifications'),
+    autoBids: database.collection('autoBids'),
+  };
+
+  await collections.users.createIndex({ email: 1 }, { unique: true });
+  await collections.autoBids.createIndex({ auctionId: 1, userId: 1 }, { unique: true });
+  await Promise.all([
+    seedCollection(collections.users, users),
+    seedCollection(collections.auctions, auctions),
+    seedCollection(collections.bids, bids),
+    seedCollection(collections.questions, questions),
+    seedCollection(collections.savedSearches, savedSearches),
+    seedCollection(collections.notifications, notifications),
+    seedCollection(collections.autoBids, autoBids),
+  ]);
+  console.log(`Connected to MongoDB database "${database.databaseName}"`);
+}
+
+async function closeDatabase() {
+  if (client) await client.close();
+}
+
 const db = {
-  // Users
-  getUsers: () => users,
-  getUserById: (id) => users.find(u => u.id === id),
-  getUserByEmail: (email) => users.find(u => u.email === email.toLowerCase()),
-  createUser: (data) => {
+  getUsers: async () => (await collections.users.find().toArray()).map(withoutMongoId),
+  getUserById: async id => withoutMongoId(await collections.users.findOne({ _id: id })),
+  getUserByEmail: async email => withoutMongoId(await collections.users.findOne({ email: email.toLowerCase() })),
+  createUser: async data => {
     const user = { id: uuidv4(), ...data, createdAt: new Date().toISOString() };
-    users.push(user);
+    await collections.users.insertOne(withMongoId(user));
     return user;
   },
 
-  // Auctions
-  getAuctions: () => auctions,
-  getAuctionById: (id) => auctions.find(a => a.id === id),
-  createAuction: (data) => {
+  getAuctions: async () => (await collections.auctions.find().toArray()).map(withoutMongoId),
+  getAuctionById: async id => withoutMongoId(await collections.auctions.findOne({ _id: id })),
+  createAuction: async data => {
     const auction = { id: uuidv4(), bidCount: 0, currentBid: null, status: 'ACTIVE', createdAt: new Date().toISOString(), ...data };
-    auctions.push(auction);
+    await collections.auctions.insertOne(withMongoId(auction));
     return auction;
   },
-  updateAuction: (id, updates) => {
-    const idx = auctions.findIndex(a => a.id === id);
-    if (idx === -1) return null;
-    Object.assign(auctions[idx], updates);
-    return auctions[idx];
+  updateAuction: async (id, updates) => {
+    const result = await collections.auctions.updateOne({ _id: id }, { $set: updates });
+    return result.matchedCount ? db.getAuctionById(id) : null;
   },
 
-  // Bids
-  getBids: () => bids,
-  getBidsByAuction: (auctionId) => bids.filter(b => b.auctionId === auctionId).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
-  getHighestBid: (auctionId) => {
-    const auctionBids = bids.filter(b => b.auctionId === auctionId);
-    if (!auctionBids.length) return null;
-    return auctionBids.reduce((max, b) => b.amount > max.amount ? b : max);
-  },
-  createBid: (data) => {
+  getBids: async () => (await collections.bids.find().toArray()).map(withoutMongoId),
+  getBidsByAuction: async auctionId => (await collections.bids.find({ auctionId }).sort({ timestamp: -1 }).toArray()).map(withoutMongoId),
+  getHighestBid: async auctionId => withoutMongoId(await collections.bids.findOne({ auctionId }, { sort: { amount: -1 } })),
+  createBid: async data => {
     const bid = { id: uuidv4(), ...data, timestamp: new Date().toISOString() };
-    bids.push(bid);
+    await collections.bids.insertOne(withMongoId(bid));
     return bid;
   },
 
-  // Questions
-  getQuestionsByAuction: (auctionId) => questions.filter(q => q.auctionId === auctionId).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)),
-  getQuestionById: (id) => questions.find(q => q.id === id),
-  createQuestion: (data) => {
+  getQuestionsByAuction: async auctionId => (await collections.questions.find({ auctionId }).sort({ createdAt: 1 }).toArray()).map(withoutMongoId),
+  getQuestionById: async id => withoutMongoId(await collections.questions.findOne({ _id: id })),
+  createQuestion: async data => {
     const question = { id: uuidv4(), answer: null, answeredAt: null, ...data, createdAt: new Date().toISOString() };
-    questions.push(question);
+    await collections.questions.insertOne(withMongoId(question));
     return question;
   },
-  updateQuestion: (id, updates) => {
-    const idx = questions.findIndex(q => q.id === id);
-    if (idx === -1) return null;
-    Object.assign(questions[idx], updates);
-    return questions[idx];
+  updateQuestion: async (id, updates) => {
+    const result = await collections.questions.updateOne({ _id: id }, { $set: updates });
+    return result.matchedCount
+      ? withoutMongoId(await collections.questions.findOne({ _id: id }))
+      : null;
   },
 
-  // Saved Searches
-  getSavedSearchesByUser: (userId) => savedSearches.filter(s => s.userId === userId),
-  createSavedSearch: (data) => {
+  getSavedSearchesByUser: async userId => (await collections.savedSearches.find({ userId }).toArray()).map(withoutMongoId),
+  createSavedSearch: async data => {
     const search = { id: uuidv4(), ...data, createdAt: new Date().toISOString() };
-    savedSearches.push(search);
+    await collections.savedSearches.insertOne(withMongoId(search));
     return search;
   },
-  deleteSavedSearch: (id) => {
-    const idx = savedSearches.findIndex(s => s.id === id);
-    if (idx !== -1) savedSearches.splice(idx, 1);
+  deleteSavedSearch: async id => {
+    await collections.savedSearches.deleteOne({ _id: id });
   },
 
-  // Notifications
-  getNotificationsByUser: (userId) => notifications.filter(n => n.userId === userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-  createNotification: (data) => {
-    const notif = { id: uuidv4(), read: false, ...data, createdAt: new Date().toISOString() };
-    notifications.push(notif);
-    return notif;
+  getNotificationsByUser: async userId => (await collections.notifications.find({ userId }).sort({ createdAt: -1 }).toArray()).map(withoutMongoId),
+  createNotification: async data => {
+    const notification = { id: uuidv4(), read: false, ...data, createdAt: new Date().toISOString() };
+    await collections.notifications.insertOne(withMongoId(notification));
+    return notification;
   },
-  markNotificationRead: (id) => {
-    const idx = notifications.findIndex(n => n.id === id);
-    if (idx !== -1) notifications[idx].read = true;
-    return notifications[idx];
+  markNotificationRead: async (id, userId) => {
+    const filter = { _id: id, userId };
+    const result = await collections.notifications.updateOne(filter, { $set: { read: true } });
+    return result.matchedCount
+      ? withoutMongoId(await collections.notifications.findOne(filter))
+      : null;
+  },
+  markAllNotificationsRead: async userId => {
+    await collections.notifications.updateMany({ userId }, { $set: { read: true } });
   },
 
-  // Auto-bids
-  getAutoBid: (auctionId, userId) => autoBids.find(ab => ab.auctionId === auctionId && ab.userId === userId),
-  getAutoBidsByAuction: (auctionId) => autoBids.filter(ab => ab.auctionId === auctionId),
-  setAutoBid: (auctionId, userId, maxAmount) => {
-    const existing = autoBids.findIndex(ab => ab.auctionId === auctionId && ab.userId === userId);
+  getAutoBid: async (auctionId, userId) => withoutMongoId(await collections.autoBids.findOne({ auctionId, userId })),
+  getAutoBidsByAuction: async auctionId => (await collections.autoBids.find({ auctionId }).toArray()).map(withoutMongoId),
+  setAutoBid: async (auctionId, userId, maxAmount) => {
     const entry = { id: uuidv4(), auctionId, userId, maxAmount, active: true, createdAt: new Date().toISOString() };
-    if (existing !== -1) { autoBids[existing] = entry; } else { autoBids.push(entry); }
-    return entry;
+    await collections.autoBids.updateOne(
+      { auctionId, userId },
+      {
+        $set: { maxAmount, active: true, createdAt: entry.createdAt },
+        $setOnInsert: { _id: entry.id, id: entry.id },
+      },
+      { upsert: true },
+    );
+    return withoutMongoId(await collections.autoBids.findOne({ auctionId, userId }));
   },
 };
 
-module.exports = { db };
+module.exports = { db, connectToDatabase, closeDatabase };

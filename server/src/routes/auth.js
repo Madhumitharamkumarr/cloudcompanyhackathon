@@ -7,34 +7,35 @@ const JWT_SECRET = process.env.JWT_SECRET || 'campusbid_demo_secret_2024';
 const signToken = (userId) => jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, avatar: u.avatar, college: u.college, createdAt: u.createdAt });
 
-router.post('/register', async (req, res) => {
+router.post('/register', async (req, res, next) => {
   try {
     const { name, email, password, college } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
     if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    if (db.getUserByEmail(email)) return res.status(409).json({ error: 'Email already registered' });
+    if (await db.getUserByEmail(email)) return res.status(409).json({ error: 'Email already registered' });
     const hashed = await bcrypt.hash(password, 10);
     const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    const user = db.createUser({ name, email: email.toLowerCase(), password: hashed, avatar: initials, college: college || '' });
+    const user = await db.createUser({ name, email: email.toLowerCase(), password: hashed, avatar: initials, college: college || '' });
     const token = signToken(user.id);
     res.status(201).json({ token, user: safeUser(user) });
   } catch (err) {
-    res.status(500).json({ error: 'Registration failed' });
+    if (err.code === 11000) return res.status(409).json({ error: 'Email already registered' });
+    next(err);
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-    const user = db.getUserByEmail(email);
+    const user = await db.getUserByEmail(email);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
     const token = signToken(user.id);
     res.json({ token, user: safeUser(user) });
   } catch (err) {
-    res.status(500).json({ error: 'Login failed' });
+    next(err);
   }
 });
 

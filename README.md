@@ -11,13 +11,15 @@ A campus-only auction marketplace where graduating students sell their used belo
 ### Prerequisites
 - Node.js v18+
 - npm v9+
+- MongoDB Community Server running locally
 
 ### 1. Start the Backend
 
 ```bash
 cd server
 cp .env.example .env
-# Edit .env to add your OpenRouter API key (optional)
+# Set MONGODB_URI if your local MongoDB uses a different address
+# Add your OpenRouter API key (optional)
 npm install
 npm start
 # Server runs on http://localhost:5000
@@ -38,7 +40,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## 🔐 Demo Login
 
-The app runs in **demo mode** with in-memory data. Use these pre-seeded accounts:
+On first startup, the server seeds MongoDB with demo accounts, auctions, bids, questions, and notifications. Use these pre-seeded accounts:
 
 | Name | Email | Password |
 |------|-------|----------|
@@ -46,7 +48,7 @@ The app runs in **demo mode** with in-memory data. Use these pre-seeded accounts
 | Priya Nair | priya@college.edu | password123 |
 | Rahul Gupta | rahul@college.edu | password123 |
 
-> ⚠️ **Demo Mode**: Data resets on server restart. Not production-safe.
+> Demo data is only seeded into empty collections. Your MongoDB data persists across server restarts.
 
 ---
 
@@ -56,6 +58,8 @@ The app runs in **demo mode** with in-memory data. Use these pre-seeded accounts
 
 ```env
 PORT=5000
+MONGODB_URI=mongodb://127.0.0.1:27017/campusbid
+MONGODB_DB=campusbid
 JWT_SECRET=your_jwt_secret_here
 OPENROUTER_API_KEY=your_openrouter_api_key_here
 OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct:free
@@ -83,7 +87,7 @@ cloudcompanyhackathon/
 │
 └── server/           # Node.js + Express backend
     ├── src/
-    │   ├── data/        # In-memory demo store
+    │       ├── data/        # MongoDB connection and data access
     │   ├── middleware/  # JWT auth
     │   └── routes/      # REST API routes
     └── index.js
@@ -149,7 +153,7 @@ cloudcompanyhackathon/
 
 - [ ] Real-time bid updates via Socket.IO (server ready, client polling fallback active)
 - [ ] Image file hosting (uses URL input or base64 preview)
-- [ ] MongoDB integration (replace in-memory store)
+- [x] MongoDB integration with persistent data and first-run demo seed
 - [ ] Email notifications
 - [ ] College domain validation
 - [ ] Automated test suite
@@ -186,7 +190,7 @@ cloudcompanyhackathon/
 - **Backend**: Node.js + Express + Socket.IO
 - **Auth**: JWT + bcryptjs
 - **AI**: OpenRouter Chat Completions API
-- **Database**: In-memory demo store (MongoDB-ready interfaces)
+- **Database**: MongoDB (local by default; configurable with `MONGODB_URI`)
 
 ---
 
