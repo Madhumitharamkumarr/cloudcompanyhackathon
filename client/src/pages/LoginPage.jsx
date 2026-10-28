@@ -23,6 +23,11 @@ export default function LoginPage() {
         await login(form.email, form.password);
       } else {
         if (!form.name.trim()) { addToast('Name is required', 'error'); setLoading(false); return; }
+        if (!/^[^\s@]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+edu$/i.test(form.email.trim())) {
+          addToast('Please use a valid .edu email address', 'error');
+          setLoading(false);
+          return;
+        }
         await register(form.name, form.email, form.password, form.college);
       }
       addToast('Welcome to CampusBid! 🎉', 'success');
@@ -85,6 +90,7 @@ export default function LoginPage() {
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.375rem' }}>Email</label>
               <input className="input-field" type="email" placeholder="you@college.edu" value={form.email} onChange={e => update('email', e.target.value)} required />
+              {tab === 'register' && <p style={{fontSize:'0.75rem',color:'#6B7280',margin:'0.375rem 0 0'}}>Registration requires a valid .edu email address.</p>}
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.375rem' }}>Password</label>

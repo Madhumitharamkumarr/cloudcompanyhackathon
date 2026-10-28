@@ -6,16 +6,19 @@ const { db } = require('../data/store');
 const JWT_SECRET = process.env.JWT_SECRET || 'campusbid_demo_secret_2024';
 const signToken = (userId) => jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, avatar: u.avatar, college: u.college, createdAt: u.createdAt });
+const isEduEmail = (email) => /^[^\s@]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+edu$/i.test(email);
 
 router.post('/register', async (req, res, next) => {
   try {
     const { name, email, password, college } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isEduEmail(normalizedEmail)) return res.status(400).json({ error: 'Please use a valid .edu email address' });
     if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    if (await db.getUserByEmail(email)) return res.status(409).json({ error: 'Email already registered' });
+    if (await db.getUserByEmail(normalizedEmail)) return res.status(409).json({ error: 'Email already registered' });
     const hashed = await bcrypt.hash(password, 10);
     const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    const user = await db.createUser({ name, email: email.toLowerCase(), password: hashed, avatar: initials, college: college || '' });
+    const user = await db.createUser({ name, email: normalizedEmail, password: hashed, avatar: initials, college: college || '' });
     const token = signToken(user.id);
     res.status(201).json({ token, user: safeUser(user) });
   } catch (err) {

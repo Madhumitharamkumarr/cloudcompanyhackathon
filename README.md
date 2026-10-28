@@ -122,6 +122,7 @@ cloudcompanyhackathon/
 ## ✅ Implemented Features
 
 - [x] User registration and login (JWT, bcrypt)
+- [x] Registration restricted to valid `.edu` email addresses
 - [x] 6 seeded demo auctions across all categories
 - [x] Discover page with featured/ending-soon/recent sections
 - [x] Category chips and keyword search
